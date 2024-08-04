@@ -14,7 +14,25 @@ use crate::{
 
 type EventHandlerFut = Pin<Box<dyn Future<Output = ()> + Send + 'static>>;
 type Runner<C, Event> = fn(&C, Event) -> EventHandlerFut;
-type DynEventHandler<C> = fn(&C, Box<dyn DomainEvent>, &Runners) -> JoinSet<()>;
+
+struct DynEventHandler<C>(fn(&C, Box<dyn DomainEvent>, &Runners) -> JoinSet<()>);
+
+impl<C: 'static> DynEventHandler<C> {
+    fn new<H: EventHandler + FromContext<C> + 'static>() -> Self {
+        Self(|ctx, event, runners| {
+            let event = event.as_ref().as_any().downcast_ref::<H::Event>().unwrap();
+
+            runners
+                .iter::<C, H::Event>()
+                .map(|runner| (runner)(ctx, event.clone()))
+                .collect()
+        })
+    }
+
+    fn handle(&self, ctx: &C, event: Box<dyn DomainEvent>, runners: &Runners) -> JoinSet<()> {
+        (self.0)(ctx, event, runners)
+    }
+}
 
 #[derive(Default)]
 struct Runners(Vec<Box<dyn Any + Send + Sync>>);
@@ -40,43 +58,28 @@ impl Runners {
     }
 }
 
-pub struct EventRouter<C: Context> {
-    routes: HashMap<TypeId, (DynEventHandler<C>, Runners)>,
-}
+pub struct EventRouter<C: Context>(HashMap<TypeId, (DynEventHandler<C>, Runners)>);
 
 impl<C: Context> Default for EventRouter<C> {
     fn default() -> Self {
-        Self {
-            routes: HashMap::new(),
-        }
+        Self(HashMap::new())
     }
 }
 
 impl<C: Context + Sized + 'static> EventRouter<C> {
     pub fn handle(&self, ctx: &C, event: Box<dyn DomainEvent>) -> Option<impl Future<Output = ()>> {
         let event_type = event.as_ref().as_any().type_id();
-        let (dyn_handler, runners) = self.routes.get(&event_type)?;
+        let (dyn_handler, runners) = self.0.get(&event_type)?;
 
-        let mut handle = (dyn_handler)(ctx, event, runners);
+        let mut handle = dyn_handler.handle(ctx, event, runners);
         Some(async move { while (handle.join_next().await).is_some() {} })
     }
 
     pub fn register<H: EventHandler + FromContext<C> + 'static>(&mut self) {
-        let entry = self
-            .routes
-            .entry(TypeId::of::<H::Event>())
-            .or_insert_with(|| {
-                let dyn_event_handler: DynEventHandler<C> = |ctx, event, runners| {
-                    let event = event.as_ref().as_any().downcast_ref::<H::Event>().unwrap();
-
-                    runners
-                        .iter::<C, H::Event>()
-                        .map(|runner| (runner)(ctx, event.clone()))
-                        .collect()
-                };
-
-                (dyn_event_handler, Runners::default())
-            });
+        let entry = self.0.entry(TypeId::of::<H::Event>()).or_insert_with(|| {
+            let dyn_event_handler = DynEventHandler::new::<H>();
+            (dyn_event_handler, Runners::default())
+        });
 
         entry.1.add::<H, C>();
     }
