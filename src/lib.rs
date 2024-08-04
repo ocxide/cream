@@ -21,14 +21,25 @@ pub mod cream_context {
 
 pub mod event_bus {
     use crate::{
-        context::Context, domain_event::DomainEvent, event_bus_port::EventBusPort,
+        context::Context,
+        event_bus_port::{EventBusPort, EventBusSocket},
         event_router::EventRouter,
     };
 
     pub struct EventBus<C: Context + 'static> {
-        recv: tokio::sync::mpsc::Receiver<Box<dyn DomainEvent>>,
+        recv: EventBusSocket,
         ctx: C,
         router: EventRouter<C>,
+    }
+
+    impl<C: Context + 'static> EventBus<C> {
+        pub fn new(socket: EventBusSocket, ctx: C, router: EventRouter<C>) -> Self {
+            EventBus {
+                recv: socket,
+                ctx,
+                router,
+            }
+        }
     }
 
     impl<C: Context + 'static> EventBus<C> {
@@ -49,25 +60,15 @@ pub mod event_bus {
         }
     }
 
-    pub fn create<C: Context + 'static>(
-        ctx: C,
-        router: EventRouter<C>,
-    ) -> (EventBus<C>, EventBusPort) {
-        let (tx, rx) = tokio::sync::mpsc::channel(100);
-        (
-            EventBus {
-                recv: rx,
-                ctx,
-                router,
-            },
-            EventBusPort::new(tx),
-        )
+    /// Recommended channel config for EventBus
+    pub fn create_channel() -> (EventBusPort, EventBusSocket) {
+        crate::event_bus_port::create(10)
     }
 
     #[cfg(test)]
     mod tests {
-
         use crate::{
+            domain_event::DomainEvent,
             event_handler::{Error, EventHandler},
             from_context::FromContext,
         };
@@ -110,7 +111,11 @@ pub mod event_bus {
 
             let mut router = EventRouter::default();
             router.register::<MyHandler>();
-            let (mut bus, port) = create(Ctx, router);
+            let (port, socket) = create_channel();
+
+            let ctx = Ctx;
+
+            let mut bus = EventBus::new(socket, ctx, router);
 
             tokio::runtime::Builder::new_multi_thread()
                 .build()
@@ -125,6 +130,19 @@ pub mod event_bus {
 
                     assert!(VAL.load(std::sync::atomic::Ordering::Relaxed));
                 });
+        }
+
+        #[test]
+        fn can_build_ctx_with_cream() {
+            #[allow(dead_code)]
+            struct Ctx(crate::cream_context::CreamContext);
+            impl Context for Ctx {}
+
+            let router = EventRouter::default();
+            let (port, socket) = create_channel();
+            let ctx = Ctx(crate::cream_context::CreamContext::new(port));
+
+            let _ = EventBus::new(socket, ctx, router);
         }
     }
 }
@@ -154,6 +172,19 @@ pub mod event_bus_port {
 
             panic!("Failed to send event: {}", err);
         }
+    }
+
+    pub struct EventBusSocket(tokio::sync::mpsc::Receiver<Box<dyn DomainEvent>>);
+
+    impl EventBusSocket {
+        pub async fn recv(&mut self) -> Option<Box<dyn DomainEvent>> {
+            self.0.recv().await
+        }
+    }
+
+    pub(crate) fn create(size: usize) -> (EventBusPort, EventBusSocket) {
+        let (tx, rx) = tokio::sync::mpsc::channel(size);
+        (EventBusPort::new(tx), EventBusSocket(rx))
     }
 }
 
