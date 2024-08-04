@@ -1,6 +1,7 @@
 pub mod cream_context {
     use crate::{context::Context, event_bus_port::EventBusPort};
 
+    #[derive(Clone)]
     pub struct CreamContext {
         event_bus_port: EventBusPort,
     }
