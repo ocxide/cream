@@ -17,7 +17,7 @@ type Runner<C, Event> = fn(&C, Event) -> EventHandlerFut;
 type DynEventHandler<C> = fn(&C, Box<dyn DomainEvent>, &Runners) -> JoinSet<()>;
 
 #[derive(Default)]
-struct Runners(Vec<Box<dyn Any>>);
+struct Runners(Vec<Box<dyn Any + Send + Sync>>);
 
 impl Runners {
     fn iter<C: 'static, E: 'static>(&self) -> impl Iterator<Item = &Runner<C, E>> {
