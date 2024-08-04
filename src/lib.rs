@@ -25,21 +25,17 @@ pub mod event_bus {
         event_router::EventRouter,
     };
 
-    pub struct EventBus(tokio::sync::mpsc::Receiver<Box<dyn DomainEvent>>);
+    pub struct EventBus<C: Context + 'static> {
+        recv: tokio::sync::mpsc::Receiver<Box<dyn DomainEvent>>,
+        ctx: C,
+        router: EventRouter<C>,
+    }
 
-    impl EventBus {
-        pub async fn listen_app<C: Context + 'static>(&mut self, ctx: &C, router: EventRouter<C>) {
-            while self.listen_app_once(ctx, &router).await.is_some() {}
-        }
-
-        pub async fn listen_app_once<C: Context + 'static>(
-            &mut self,
-            ctx: &C,
-            router: &EventRouter<C>,
-        ) -> Option<()> {
-            let event = self.0.recv().await?;
+    impl<C: Context + 'static> EventBus<C> {
+        pub async fn listen_once(&mut self) -> Option<()> {
+            let event = self.recv.recv().await?;
             let (name, version) = (event.name(), event.version());
-            let Some(fut) = router.handle(ctx, event) else {
+            let Some(fut) = self.router.handle(&self.ctx, event) else {
                 println!("warning: got unhandable event, {}@{}", name, version);
                 return Some(());
             };
@@ -47,11 +43,25 @@ pub mod event_bus {
             tokio::spawn(fut);
             Some(())
         }
+
+        pub async fn listen(&mut self) {
+            while self.listen_once().await.is_some() {}
+        }
     }
 
-    pub fn create() -> (EventBus, EventBusPort) {
+    pub fn create<C: Context + 'static>(
+        ctx: C,
+        router: EventRouter<C>,
+    ) -> (EventBus<C>, EventBusPort) {
         let (tx, rx) = tokio::sync::mpsc::channel(100);
-        (EventBus(rx), EventBusPort::new(tx))
+        (
+            EventBus {
+                recv: rx,
+                ctx,
+                router,
+            },
+            EventBusPort::new(tx),
+        )
     }
 
     #[cfg(test)]
@@ -98,18 +108,16 @@ pub mod event_bus {
                 }
             }
 
-            let (mut bus, port) = create();
+            let mut router = EventRouter::default();
+            router.register::<MyHandler>();
+            let (mut bus, port) = create(Ctx, router);
 
             tokio::runtime::Builder::new_multi_thread()
                 .build()
                 .unwrap()
                 .block_on(async move {
                     let bus_handle = tokio::spawn(async move {
-                        let ctx = Ctx;
-                        let mut router = EventRouter::default();
-                        router.register::<MyHandler>();
-
-                        bus.listen_app_once(&ctx, &router).await;
+                        bus.listen_once().await;
                     });
 
                     port.publish(MyEvent);
