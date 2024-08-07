@@ -3,7 +3,11 @@ name = "cream"
 version = "0.1.0"
 edition = "2021"
 
+[workspace]
+members = ["libs/cream_derive"]
+
 [dependencies]
 async-trait = "0.1.81"
 # thiserror = "1.0.63"
 tokio = { version = "1.39.1", features = ["full"] }
+cream_derive = { path = "./libs/cream_derive" }

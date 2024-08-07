@@ -78,7 +78,17 @@ name = "cream"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "cream_derive",
  "tokio",
+]
+
+[[package]]
+name = "cream_derive"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
