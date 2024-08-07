@@ -1,87 +1,102 @@
-use std::{
-    any::{Any, TypeId},
-    collections::HashMap,
-    future::Future,
-    pin::Pin,
-};
+use std::{any::TypeId, collections::HashMap, future::Future, pin::Pin};
 
 use tokio::task::JoinSet;
 
-use crate::{
-    context::Context, domain_event::DomainEvent, event_handler::EventHandler,
-    from_context::FromContext,
-};
+use crate::{domain_event::DomainEvent, event_handler::EventHandler, from_context::FromContext};
 
-type EventHandlerFut = Pin<Box<dyn Future<Output = ()> + Send + 'static>>;
-type Runner<C, Event> = fn(&C, Event) -> EventHandlerFut;
+trait Handlers<C>: AsAnyC<C> + Send {
+    fn call(&self, ctx: &C, event: Box<dyn DomainEvent>) -> JoinSet<()>;
+}
 
-struct DynEventHandler<C>(fn(&C, Box<dyn DomainEvent>, &Runners) -> JoinSet<()>);
+trait AsAnyC<C> {
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
+}
 
-impl<C: 'static> DynEventHandler<C> {
-    fn new<H: EventHandler + FromContext<C> + 'static>() -> Self {
-        Self(|ctx, event, runners| {
-            let event = event.as_ref().as_any().downcast_ref::<H::Event>().unwrap();
-
-            runners
-                .iter::<C, H::Event>()
-                .map(|runner| (runner)(ctx, event.clone()))
-                .collect()
-        })
-    }
-
-    fn handle(&self, ctx: &C, event: Box<dyn DomainEvent>, runners: &Runners) -> JoinSet<()> {
-        (self.0)(ctx, event, runners)
+impl<C, H> AsAnyC<C> for H
+where
+    H: Handlers<C> + 'static + Sized,
+{
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
     }
 }
 
-#[derive(Default)]
-struct Runners(Vec<Box<dyn Any + Send + Sync>>);
+type Caller<C, E> = fn(&C, E) -> Pin<Box<dyn Future<Output = ()> + Send>>;
+struct EventHandlers<C, E>(Vec<Caller<C, E>>);
 
-impl Runners {
-    fn iter<C: 'static, E: 'static>(&self) -> impl Iterator<Item = &Runner<C, E>> {
-        self.0.iter().map(|a| {
-            a.as_ref()
-                .downcast_ref::<Runner<C, E>>()
-                .expect("downcast runner")
-        })
+impl<C: 'static, E: DomainEvent + Clone> Handlers<C> for EventHandlers<C, E> {
+    fn call(&self, ctx: &C, event: Box<dyn DomainEvent>) -> JoinSet<()> {
+        let event = event
+            .as_any()
+            .downcast_ref::<E>()
+            .expect("Invalid event type");
+
+        self.0
+            .iter()
+            .map(|handler| (handler)(ctx, event.clone()))
+            .collect()
     }
+}
 
-    fn add<H: EventHandler + FromContext<C> + 'static, C: Context + 'static>(&mut self) {
-        let runner: Runner<C, H::Event> = |ctx, event| {
+impl<C, E: DomainEvent> EventHandlers<C, E> {
+    fn add<H>(&mut self)
+    where
+        H: EventHandler<Event = E> + FromContext<C> + Send + 'static,
+    {
+        let caller: Caller<C, H::Event> = |ctx, event| {
             let handler = H::from_context(ctx);
             Box::pin(async move {
                 let _ = handler.handle(event).await;
             })
         };
 
-        self.0.push(Box::new(runner));
+        self.0.push(caller);
     }
 }
 
-pub struct EventRouter<C: Context>(HashMap<TypeId, (DynEventHandler<C>, Runners)>);
+impl<C, E> Default for EventHandlers<C, E> {
+    fn default() -> Self {
+        Self(Vec::new())
+    }
+}
 
-impl<C: Context> Default for EventRouter<C> {
+pub struct EventRouter<C>(HashMap<TypeId, Box<dyn Handlers<C>>>);
+
+impl<C> Default for EventRouter<C> {
     fn default() -> Self {
         Self(HashMap::new())
     }
 }
 
-impl<C: Context + Sized + 'static> EventRouter<C> {
+impl<C: 'static> EventRouter<C> {
     pub fn handle(&self, ctx: &C, event: Box<dyn DomainEvent>) -> Option<impl Future<Output = ()>> {
-        let event_type = event.as_ref().as_any().type_id();
-        let (dyn_handler, runners) = self.0.get(&event_type)?;
+        let id = event.as_any().type_id();
 
-        let mut handle = dyn_handler.handle(ctx, event, runners);
-        Some(async move { while (handle.join_next().await).is_some() {} })
+        let handlers = self.0.get(&id)?;
+        let mut join = handlers.call(ctx, event);
+        Some(async move { while join.join_next().await.is_some() {} })
     }
 
-    pub fn register<H: EventHandler + FromContext<C> + 'static>(&mut self) {
-        let entry = self.0.entry(TypeId::of::<H::Event>()).or_insert_with(|| {
-            let dyn_event_handler = DynEventHandler::new::<H>();
-            (dyn_event_handler, Runners::default())
-        });
+    pub fn register<H>(&mut self)
+    where
+        H: EventHandler + FromContext<C> + Send + 'static,
+    {
+        let id = TypeId::of::<H::Event>();
+        match self.0.get_mut(&id) {
+            None => {
+                let mut handlers = EventHandlers::<C, H::Event>::default();
+                handlers.add::<H>();
+                self.0.insert(id, Box::new(handlers));
+            }
 
-        entry.1.add::<H, C>();
+            Some(handlers) => {
+                handlers
+                    .as_any_mut()
+                    .downcast_mut::<EventHandlers<C, H::Event>>()
+                    .expect("Invalid handler type")
+                    .add::<H>();
+            }
+        };
     }
 }
 
