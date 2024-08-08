@@ -1,38 +1,16 @@
-pub mod cream_context {
-    use crate::{context::Context, event_bus_port::EventBusPort};
-
-    #[derive(Clone)]
-    pub struct CreamContext {
-        event_bus_port: EventBusPort,
-    }
-
-    impl Context for CreamContext {}
-
-    impl CreamContext {
-        pub fn new(event_bus_port: EventBusPort) -> Self {
-            Self { event_bus_port }
-        }
-
-        pub fn event_bus_port(&self) -> EventBusPort {
-            self.event_bus_port.clone()
-        }
-    }
-}
-
 pub mod event_bus {
     use crate::{
-        context::Context,
         event_bus_port::{EventBusPort, EventBusSocket},
         event_router::EventRouter,
     };
 
-    pub struct EventBus<C: Context + 'static> {
+    pub struct EventBus<C: 'static> {
         recv: EventBusSocket,
         ctx: C,
         router: EventRouter<C>,
     }
 
-    impl<C: Context + 'static> EventBus<C> {
+    impl<C: 'static> EventBus<C> {
         pub fn new(socket: EventBusSocket, ctx: C, router: EventRouter<C>) -> Self {
             EventBus {
                 recv: socket,
@@ -42,7 +20,7 @@ pub mod event_bus {
         }
     }
 
-    impl<C: Context + 'static> EventBus<C> {
+    impl<C: 'static> EventBus<C> {
         pub async fn listen_once(&mut self) -> Option<()> {
             let event = self.recv.recv().await?;
             let (name, version) = (event.name(), event.version());
@@ -68,9 +46,9 @@ pub mod event_bus {
     #[cfg(test)]
     mod tests {
         use crate::{
+            context::FromContext,
             domain_event::DomainEvent,
             event_handler::{Error, EventHandler},
-            from_context::FromContext,
         };
 
         use super::*;
@@ -80,7 +58,6 @@ pub mod event_bus {
             static VAL: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
             struct Ctx;
-            impl Context for Ctx {}
 
             #[derive(Clone)]
             struct MyEvent;
@@ -135,12 +112,11 @@ pub mod event_bus {
         #[test]
         fn can_build_ctx_with_cream() {
             #[allow(dead_code)]
-            struct Ctx(crate::cream_context::CreamContext);
-            impl Context for Ctx {}
+            struct Ctx(crate::context::CreamContext);
 
             let router = EventRouter::default();
             let (port, socket) = create_channel();
-            let ctx = Ctx(crate::cream_context::CreamContext::new(port));
+            let ctx = Ctx(crate::context::CreamContext::new(port));
 
             let _ = EventBus::new(socket, ctx, router);
         }
@@ -188,10 +164,6 @@ pub mod event_bus_port {
     }
 }
 
-pub mod context {
-    pub trait Context {}
-}
-
 pub mod domain_event {
     use std::any::Any;
 
@@ -226,9 +198,18 @@ pub mod event_handler {
     pub enum Error {}
 }
 
-pub mod from_context {
+pub mod context {
+    mod cream_context;
+
+    pub use cream_context::CreamContext;
+    pub use cream_derive::FromContext;
+
     pub trait FromContext<C> {
-        fn from_context(context: &C) -> Self;
+        fn from_context(ctx: &C) -> Self;
+    }
+
+    pub trait ContextExtend<C> {
+        fn provide_context(&self) -> &C;
     }
 }
 

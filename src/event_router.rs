@@ -2,7 +2,7 @@ use std::{any::TypeId, collections::HashMap, future::Future, pin::Pin};
 
 use tokio::task::JoinSet;
 
-use crate::{domain_event::DomainEvent, event_handler::EventHandler, from_context::FromContext};
+use crate::{context::FromContext, domain_event::DomainEvent, event_handler::EventHandler};
 
 trait Handlers<C>: AsAnyC<C> + Send {
     fn call(&self, ctx: &C, event: Box<dyn DomainEvent>) -> JoinSet<()>;
@@ -105,10 +105,9 @@ pub mod tests {
     use std::sync::{Arc, Mutex};
 
     use crate::{
-        context::Context,
+        context::FromContext,
         domain_event::DomainEvent,
         event_handler::{Error, EventHandler},
-        from_context::FromContext,
     };
 
     #[test]
@@ -116,7 +115,6 @@ pub mod tests {
         struct MockContext {
             val: Mutex<bool>,
         }
-        impl Context for MockContext {}
 
         impl MockContext {
             fn my_service(&self) {
@@ -174,26 +172,25 @@ pub mod tests {
     #[test]
     fn multiple_contexts() {
         type TestPoint = Arc<Mutex<usize>>;
-        trait TestContext: Context {
+        trait TestContext {
             fn specific_impl(&self) -> usize;
             fn provide_data(&self) -> Arc<Mutex<usize>>;
-        }
-        trait TestFromContext {
-            fn from_context(ctx: &impl TestContext) -> Self;
-        }
-
-        impl<C, S> FromContext<C> for S
-        where
-            C: TestContext,
-            S: TestFromContext,
-        {
-            fn from_context(ctx: &C) -> Self {
-                <Self as TestFromContext>::from_context(ctx)
-            }
         }
 
         struct ContextOne(TestPoint);
         struct ContextTwo(TestPoint);
+
+        impl<C: TestContext> FromContext<C> for TestPoint {
+            fn from_context(ctx: &C) -> Self {
+                ctx.provide_data()
+            }
+        }
+
+        impl<C: TestContext> FromContext<C> for usize {
+            fn from_context(ctx: &C) -> Self {
+                ctx.specific_impl()
+            }
+        }
 
         impl TestContext for ContextOne {
             fn specific_impl(&self) -> usize {
@@ -205,8 +202,6 @@ pub mod tests {
             }
         }
 
-        impl Context for ContextOne {}
-
         impl TestContext for ContextTwo {
             fn specific_impl(&self) -> usize {
                 2
@@ -216,8 +211,6 @@ pub mod tests {
                 self.0.clone()
             }
         }
-
-        impl Context for ContextTwo {}
 
         #[derive(Clone)]
         struct MyEvent;
@@ -231,6 +224,8 @@ pub mod tests {
             }
         }
 
+        #[derive(FromContext)]
+        #[from_context(C: TestContext)]
         struct MyHandler {
             point: TestPoint,
             n: usize,
@@ -241,15 +236,6 @@ pub mod tests {
             async fn handle(&self, _: Self::Event) -> Result<(), Error> {
                 *self.point.lock().unwrap() = self.n;
                 Ok(())
-            }
-        }
-
-        impl TestFromContext for MyHandler {
-            fn from_context(ctx: &impl TestContext) -> Self {
-                Self {
-                    point: ctx.provide_data(),
-                    n: ctx.specific_impl(),
-                }
             }
         }
 
