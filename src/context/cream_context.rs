@@ -1,4 +1,4 @@
-use crate::event_bus_port::EventBusPort;
+use crate::event_bus::EventBusPort;
 
 use super::{ContextExtend, FromContext};
 

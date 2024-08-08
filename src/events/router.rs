@@ -2,7 +2,7 @@ use std::{any::TypeId, collections::HashMap, future::Future, pin::Pin};
 
 use tokio::task::JoinSet;
 
-use crate::{context::FromContext, domain_event::DomainEvent, event_handler::EventHandler};
+use crate::{context::FromContext, events::DomainEvent, events::Handler};
 
 trait Handlers<C>: AsAnyC<C> + Send {
     fn call(&self, ctx: &C, event: Box<dyn DomainEvent>) -> JoinSet<()>;
@@ -41,7 +41,7 @@ impl<C: 'static, E: DomainEvent + Clone> Handlers<C> for EventHandlers<C, E> {
 impl<C, E: DomainEvent> EventHandlers<C, E> {
     fn add<H>(&mut self)
     where
-        H: EventHandler<Event = E> + FromContext<C> + Send + 'static,
+        H: Handler<Event = E> + FromContext<C> + Send + 'static,
     {
         let caller: Caller<C, H::Event> = |ctx, event| {
             let handler = H::from_context(ctx);
@@ -60,16 +60,16 @@ impl<C, E> Default for EventHandlers<C, E> {
     }
 }
 
-pub struct EventRouter<C>(HashMap<TypeId, Box<dyn Handlers<C>>>);
+pub struct Router<C>(HashMap<TypeId, Box<dyn Handlers<C>>>);
 
-impl<C> Default for EventRouter<C> {
+impl<C> Default for Router<C> {
     fn default() -> Self {
         Self(HashMap::new())
     }
 }
 
-impl<C: 'static> EventRouter<C> {
-    pub fn handle(&self, ctx: &C, event: Box<dyn DomainEvent>) -> Option<impl Future<Output = ()>> {
+impl<C: 'static> Router<C> {
+    pub fn call(&self, ctx: &C, event: Box<dyn DomainEvent>) -> Option<impl Future<Output = ()>> {
         let id = event.as_any().type_id();
 
         let handlers = self.0.get(&id)?;
@@ -77,9 +77,9 @@ impl<C: 'static> EventRouter<C> {
         Some(async move { while join.join_next().await.is_some() {} })
     }
 
-    pub fn register<H>(&mut self)
+    pub fn add<H>(&mut self)
     where
-        H: EventHandler + FromContext<C> + Send + 'static,
+        H: Handler + FromContext<C> + 'static,
     {
         let id = TypeId::of::<H::Event>();
         match self.0.get_mut(&id) {
@@ -106,8 +106,8 @@ pub mod tests {
 
     use crate::{
         context::FromContext,
-        domain_event::DomainEvent,
-        event_handler::{Error, EventHandler},
+        events::DomainEvent,
+        events::{Error, Handler},
     };
 
     #[test]
@@ -143,7 +143,7 @@ pub mod tests {
             }
         }
 
-        impl EventHandler for TestHandler {
+        impl Handler for TestHandler {
             type Event = TestEvent;
             async fn handle(&self, _event: Self::Event) -> Result<(), Error> {
                 println!("handle");
@@ -151,8 +151,8 @@ pub mod tests {
             }
         }
 
-        let mut router = super::EventRouter::<MockContext>::default();
-        router.register::<TestHandler>();
+        let mut router = super::Router::<MockContext>::default();
+        router.add::<TestHandler>();
 
         let context = MockContext {
             val: Mutex::new(false),
@@ -162,7 +162,7 @@ pub mod tests {
             .build()
             .unwrap()
             .block_on(async move {
-                router.handle(&context, Box::new(TestEvent)).unwrap().await;
+                router.call(&context, Box::new(TestEvent)).unwrap().await;
                 *context.val.lock().unwrap()
             });
 
@@ -231,7 +231,7 @@ pub mod tests {
             n: usize,
         }
 
-        impl EventHandler for MyHandler {
+        impl Handler for MyHandler {
             type Event = MyEvent;
             async fn handle(&self, _: Self::Event) -> Result<(), Error> {
                 *self.point.lock().unwrap() = self.n;
@@ -247,25 +247,19 @@ pub mod tests {
                 {
                     let context_one = ContextOne(data.clone());
 
-                    let mut router = super::EventRouter::<ContextOne>::default();
-                    router.register::<MyHandler>();
+                    let mut router = super::Router::<ContextOne>::default();
+                    router.add::<MyHandler>();
 
-                    router
-                        .handle(&context_one, Box::new(MyEvent))
-                        .unwrap()
-                        .await;
+                    router.call(&context_one, Box::new(MyEvent)).unwrap().await;
 
                     assert_eq!(*data.lock().unwrap(), 1);
                 }
 
                 {
                     let context_two = ContextTwo(data.clone());
-                    let mut router = super::EventRouter::<ContextTwo>::default();
-                    router.register::<MyHandler>();
-                    router
-                        .handle(&context_two, Box::new(MyEvent))
-                        .unwrap()
-                        .await;
+                    let mut router = super::Router::<ContextTwo>::default();
+                    router.add::<MyHandler>();
+                    router.call(&context_two, Box::new(MyEvent)).unwrap().await;
                     assert_eq!(*data.lock().unwrap(), 2);
                 }
             });
