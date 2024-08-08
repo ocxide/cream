@@ -1,6 +1,6 @@
 use crate::event_bus::EventBusPort;
 
-use super::{ContextExtend, FromContext};
+use super::FromContext;
 
 #[derive(Clone)]
 pub struct CreamContext {
@@ -16,16 +16,5 @@ impl CreamContext {
 impl FromContext<CreamContext> for EventBusPort {
     fn from_context(ctx: &CreamContext) -> Self {
         ctx.event_bus_port.clone()
-    }
-}
-
-impl<C, S> FromContext<C> for S
-where
-    C: ContextExtend<CreamContext>,
-    S: FromContext<CreamContext>,
-{
-    fn from_context(ctx: &C) -> Self {
-        let cream_ctx = ctx.provide_context();
-        <S as FromContext<CreamContext>>::from_context(cream_ctx)
     }
 }
