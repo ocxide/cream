@@ -2,7 +2,10 @@ use std::{any::TypeId, collections::HashMap, future::Future, pin::Pin};
 
 use tokio::task::JoinSet;
 
-use crate::{context::FromContext, events::DomainEvent, events::Handler};
+use crate::{
+    context::ContextProvide,
+    events::{DomainEvent, Handler},
+};
 
 trait Handlers<C>: AsAnyC<C> + Send {
     fn call(&self, ctx: &C, event: Box<dyn DomainEvent>) -> JoinSet<()>;
@@ -41,10 +44,11 @@ impl<C: 'static, E: DomainEvent + Clone> Handlers<C> for EventHandlers<C, E> {
 impl<C, E: DomainEvent> EventHandlers<C, E> {
     fn add<H>(&mut self)
     where
-        H: Handler<Event = E> + FromContext<C> + Send + 'static,
+        H: Handler<Event = E> + Send + 'static,
+        C: ContextProvide<H>,
     {
         let caller: Caller<C, H::Event> = |ctx, event| {
-            let handler = H::from_context(ctx);
+            let handler = ctx.provide();
             Box::pin(async move {
                 let _ = handler.handle(event).await;
             })
@@ -79,7 +83,8 @@ impl<C: 'static> Router<C> {
 
     pub fn add<H>(&mut self)
     where
-        H: Handler + FromContext<C> + 'static,
+        H: Handler + 'static,
+        C: ContextProvide<H>,
     {
         let id = TypeId::of::<H::Event>();
         match self.0.get_mut(&id) {
@@ -102,12 +107,11 @@ impl<C: 'static> Router<C> {
 
 #[cfg(test)]
 pub mod tests {
-    use std::sync::{Arc, Mutex};
+    use std::sync::Mutex;
 
     use crate::{
-        context::FromContext,
-        events::DomainEvent,
-        events::{Error, Handler},
+        context::ContextProvide,
+        events::{DomainEvent, Error, Handler},
     };
 
     #[test]
@@ -136,10 +140,10 @@ pub mod tests {
         }
 
         struct TestHandler;
-        impl FromContext<MockContext> for TestHandler {
-            fn from_context(ctx: &MockContext) -> Self {
-                ctx.my_service();
-                Self {}
+        impl ContextProvide<TestHandler> for MockContext {
+            fn provide(&self) -> TestHandler {
+                self.my_service();
+                TestHandler {}
             }
         }
 
@@ -167,101 +171,5 @@ pub mod tests {
             });
 
         assert!(val);
-    }
-
-    #[test]
-    fn multiple_contexts() {
-        type TestPoint = Arc<Mutex<usize>>;
-        trait TestContext {
-            fn specific_impl(&self) -> usize;
-            fn provide_data(&self) -> Arc<Mutex<usize>>;
-        }
-
-        struct ContextOne(TestPoint);
-        struct ContextTwo(TestPoint);
-
-        impl<C: TestContext> FromContext<C> for TestPoint {
-            fn from_context(ctx: &C) -> Self {
-                ctx.provide_data()
-            }
-        }
-
-        impl<C: TestContext> FromContext<C> for usize {
-            fn from_context(ctx: &C) -> Self {
-                ctx.specific_impl()
-            }
-        }
-
-        impl TestContext for ContextOne {
-            fn specific_impl(&self) -> usize {
-                1
-            }
-
-            fn provide_data(&self) -> TestPoint {
-                self.0.clone()
-            }
-        }
-
-        impl TestContext for ContextTwo {
-            fn specific_impl(&self) -> usize {
-                2
-            }
-
-            fn provide_data(&self) -> TestPoint {
-                self.0.clone()
-            }
-        }
-
-        #[derive(Clone)]
-        struct MyEvent;
-        impl DomainEvent for MyEvent {
-            fn name(&self) -> &'static str {
-                "foo.bar.bes"
-            }
-
-            fn version(&self) -> &'static str {
-                "1.0.0"
-            }
-        }
-
-        #[derive(FromContext)]
-        #[from_context(C: TestContext)]
-        struct MyHandler {
-            point: TestPoint,
-            n: usize,
-        }
-
-        impl Handler for MyHandler {
-            type Event = MyEvent;
-            async fn handle(&self, _: Self::Event) -> Result<(), Error> {
-                *self.point.lock().unwrap() = self.n;
-                Ok(())
-            }
-        }
-
-        tokio::runtime::Builder::new_current_thread()
-            .build()
-            .unwrap()
-            .block_on(async {
-                let data = Arc::new(Mutex::new(0));
-                {
-                    let context_one = ContextOne(data.clone());
-
-                    let mut router = super::Router::<ContextOne>::default();
-                    router.add::<MyHandler>();
-
-                    router.call(&context_one, Box::new(MyEvent)).unwrap().await;
-
-                    assert_eq!(*data.lock().unwrap(), 1);
-                }
-
-                {
-                    let context_two = ContextTwo(data.clone());
-                    let mut router = super::Router::<ContextTwo>::default();
-                    router.add::<MyHandler>();
-                    router.call(&context_two, Box::new(MyEvent)).unwrap().await;
-                    assert_eq!(*data.lock().unwrap(), 2);
-                }
-            });
     }
 }

@@ -44,10 +44,11 @@ pub fn create_channel() -> (EventBusPort, EventBusSocket) {
 
 #[cfg(test)]
 mod tests {
+
     use crate::{
-        context::FromContext,
         events::DomainEvent,
         events::{Error, Handler},
+        context::ContextProvide,
     };
 
     use super::*;
@@ -70,8 +71,8 @@ mod tests {
             }
         }
 
-        #[derive(FromContext)]
-        #[from_context(Ctx)]
+        #[derive(ContextProvide)]
+        #[provider_context(Ctx)]
         struct MyHandler;
 
         impl Handler for MyHandler {
@@ -117,4 +118,3 @@ mod tests {
         let _ = RouterBus::new(socket, ctx, router);
     }
 }
-
