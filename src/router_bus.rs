@@ -1,6 +1,7 @@
 use crate::{
     event_bus::{EventBusPort, EventBusSocket},
     events::router::Router,
+    tasks::Tasks,
 };
 
 pub struct RouterBus<C: 'static> {
@@ -20,7 +21,7 @@ impl<C: 'static> RouterBus<C> {
 }
 
 impl<C: 'static> RouterBus<C> {
-    pub async fn listen_once(&mut self) -> Option<()> {
+    pub async fn listen_once(&mut self, tasks: &Tasks) -> Option<()> {
         let event = self.recv.recv().await?;
         let (name, version) = (event.name(), event.version());
         let Some(fut) = self.router.call(&self.ctx, event) else {
@@ -28,12 +29,12 @@ impl<C: 'static> RouterBus<C> {
             return Some(());
         };
 
-        tokio::spawn(fut);
+        tasks.spawn(fut);
         Some(())
     }
 
-    pub async fn listen(&mut self) {
-        while self.listen_once().await.is_some() {}
+    pub async fn listen(&mut self, tasks: Tasks) {
+        while self.listen_once(&tasks).await.is_some() {}
     }
 }
 
@@ -46,9 +47,9 @@ pub fn create_channel() -> (EventBusPort, EventBusSocket) {
 mod tests {
 
     use crate::{
+        context::ContextProvide,
         events::DomainEvent,
         events::{Error, Handler},
-        context::ContextProvide,
     };
 
     use super::*;
@@ -95,8 +96,9 @@ mod tests {
             .build()
             .unwrap()
             .block_on(async move {
+                let tasks = Tasks::new();
                 let bus_handle = tokio::spawn(async move {
-                    bus.listen_once().await;
+                    bus.listen_once(&tasks).await;
                 });
 
                 port.publish(MyEvent);
