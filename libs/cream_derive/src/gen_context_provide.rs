@@ -25,7 +25,7 @@ pub fn gen_context_provide(input: syn::DeriveInput) -> TokenStream {
     let build_tokens = match ast.fields {
         syn::Fields::Named(fields) => {
             let mappings = fields.named.iter().map(|field| {
-                let mapping = quote! { self.provide() };
+                let mapping = quote! { self.ctx_provide() };
                 let name = field.ident.as_ref().expect("expected named field");
 
                 quote! { #name: #mapping }
@@ -35,7 +35,7 @@ pub fn gen_context_provide(input: syn::DeriveInput) -> TokenStream {
         }
         syn::Fields::Unnamed(fields) => {
             let mappings = fields.unnamed.iter().map(|_| {
-                let mapping = quote! { self.provide() };
+                let mapping = quote! { self.ctx_provide() };
                 quote! { #mapping }
             });
 
@@ -48,7 +48,7 @@ pub fn gen_context_provide(input: syn::DeriveInput) -> TokenStream {
 
     quote! {
         impl ContextProvide<#struct_name> for #ctx_ident {
-            fn provide(&self) -> #struct_name {
+            fn ctx_provide(&self) -> #struct_name {
                 #build_tokens
             }
         }
@@ -160,10 +160,10 @@ mod tests {
             super::gen_context_provide(ast).to_string(),
             quote! {
                 impl ContextProvide<Foo> for MyCtx {
-                    fn provide(&self) -> Foo {
+                    fn ctx_provide(&self) -> Foo {
                         Foo {
-                            bar: self.provide(),
-                            baz: self.provide()
+                            bar: self.ctx_provide(),
+                            baz: self.ctx_provide()
                         }
                     }
                 }

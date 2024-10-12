@@ -4,5 +4,5 @@ pub use cream_context::CreamContext;
 pub use cream_derive::ContextProvide;
 
 pub trait ContextProvide<S> {
-    fn provide(&self) -> S;
+    fn ctx_provide(&self) -> S;
 }

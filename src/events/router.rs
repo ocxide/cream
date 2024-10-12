@@ -48,7 +48,7 @@ impl<C, E: DomainEvent> EventHandlers<C, E> {
         C: ContextProvide<H>,
     {
         let caller: Caller<C, H::Event> = |ctx, event| {
-            let handler = ctx.provide();
+            let handler = ctx.ctx_provide();
             Box::pin(async move {
                 let _ = handler.handle(event).await;
             })
@@ -141,7 +141,7 @@ pub mod tests {
 
         struct TestHandler;
         impl ContextProvide<TestHandler> for MockContext {
-            fn provide(&self) -> TestHandler {
+            fn ctx_provide(&self) -> TestHandler {
                 self.my_service();
                 TestHandler {}
             }

@@ -14,8 +14,8 @@ impl<S> ContextProvide<S> for AppCtx
 where
     CreamContext: ContextProvide<S>,
 {
-    fn provide(&self) -> S {
-        self.cream.provide()
+    fn ctx_provide(&self) -> S {
+        self.cream.ctx_provide()
     }
 }
 

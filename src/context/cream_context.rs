@@ -14,7 +14,7 @@ impl CreamContext {
 }
 
 impl ContextProvide<EventBusPort> for CreamContext {
-    fn provide(&self) -> EventBusPort {
+    fn ctx_provide(&self) -> EventBusPort {
         self.event_bus_port.clone()
     }
 }
