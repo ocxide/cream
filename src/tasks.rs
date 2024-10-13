@@ -19,6 +19,9 @@ impl Tasks {
     }
 
     pub async fn wait(&self) {
+        // By wating twice, we ensure that the tasks are completed
+        // I think a single wait should be enough, but just works if there are two wait
+        self.0.wait().await;
         self.0.wait().await;
     }
 
@@ -29,13 +32,15 @@ impl Tasks {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{atomic::AtomicU8, Arc};
+    use std::sync::{
+        atomic::{AtomicBool, AtomicU8},
+        Arc,
+    };
 
     use crate::{
-        context::ContextProvide,
-        event_bus::{self, EventBusPort},
+        context::{events_context::EventsContextBuilder, Context, ContextProvide},
+        event_bus::EventBusPort,
         events::{router, DomainEvent, Error, Handler},
-        router_bus::{self, create_channel},
     };
 
     use super::*;
@@ -67,18 +72,12 @@ mod tests {
 
         #[derive(Clone)]
         struct MyCtx {
-            cream: CreamContext,
-            ran: Arc<AtomicU8>,
+            ran: Arc<AtomicBool>,
+            created: Arc<AtomicBool>,
         }
 
-        impl ContextProvide<EventBusPort> for MyCtx {
-            fn provide(&self) -> EventBusPort {
-                self.cream.provide()
-            }
-        }
-
-        impl ContextProvide<Arc<AtomicU8>> for MyCtx {
-            fn provide(&self) -> Arc<AtomicU8> {
+        impl ContextProvide<Arc<AtomicBool>> for MyCtx {
+            fn ctx_provide(&self) -> Arc<AtomicBool> {
                 self.ran.clone()
             }
         }
@@ -96,12 +95,13 @@ mod tests {
         }
 
         struct MyHandler {
-            ran: Arc<AtomicU8>,
+            ran: Arc<AtomicBool>,
         }
 
         impl ContextProvide<MyHandler> for MyCtx {
-            fn provide(&self) -> MyHandler {
-                println!("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA;A");
+            fn ctx_provide(&self) -> MyHandler {
+                self.created
+                    .store(true, std::sync::atomic::Ordering::Relaxed);
                 MyHandler {
                     ran: self.ran.clone(),
                 }
@@ -112,36 +112,36 @@ mod tests {
             type Event = MyEvent;
             async fn handle(&self, _: Self::Event) -> Result<(), Error> {
                 tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-                self.ran.store(1, std::sync::atomic::Ordering::Relaxed);
+                self.ran.store(true, std::sync::atomic::Ordering::Relaxed);
                 Ok(())
             }
         }
 
-        let (port, socket) = create_channel();
-
         let ctx = MyCtx {
-            cream: CreamContext::new(port.clone()),
-            ran: Arc::new(AtomicU8::new(0)),
+            ran: Arc::new(AtomicBool::new(false)),
+            created: Arc::new(AtomicBool::new(false)),
         };
 
         let mut router = router::Router::<MyCtx>::default();
         router.add::<MyHandler>();
 
-        let mut router_bus = router_bus::RouterBus::new(socket, ctx.clone(), router);
-        let tasks = Tasks::new();
+        let cream_ctx = CreamContext::default();
+        let events_ctx = EventsContextBuilder::default().build(&cream_ctx, router, ctx.clone());
 
-        tokio::spawn({
-            let tasks = tasks.clone();
-            async move { router_bus.listen(tasks).await }
-        });
+        let tasks: Tasks = cream_ctx.provide();
+        let port: EventBusPort = events_ctx.provide();
 
         port.publish(MyEvent);
-
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
         tasks.close();
         tasks.wait().await;
 
-        assert_eq!(ctx.ran.load(std::sync::atomic::Ordering::Relaxed), 1);
+        assert_eq!(tasks.0.len(), 0, "there should be no tasks left");
+
+        assert!(ctx.created.load(std::sync::atomic::Ordering::Relaxed), "handler should have been created");
+        assert!(
+            ctx.ran.load(std::sync::atomic::Ordering::Relaxed),
+            "handler should have run"
+        );
     }
 }

@@ -40,13 +40,15 @@ impl<C: 'static> RouterBus<C> {
 mod tests {
 
     use crate::{
-        context::ContextProvide, event_bus, events::{DomainEvent, Error, Handler}
+        context::{events_context::EventsContextBuilder, Context, ContextProvide, CreamContext},
+        event_bus::{self, EventBusPort},
+        events::{DomainEvent, Error, Handler},
     };
 
     use super::*;
 
-    #[test]
-    fn can_send_events_through_threads() {
+    #[tokio::test]
+    async fn can_send_events_through_threads() {
         static VAL: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
         struct Ctx;
@@ -75,29 +77,21 @@ mod tests {
             }
         }
 
-        let tasks = Tasks::new();
-
-        let mut router = Router::default();
-        router.add::<MyHandler>();
-        let (port, socket) = event_bus::create(10, tasks.clone());
-
         let ctx = Ctx;
+        let cream_ctx = CreamContext::default();
 
-        let mut bus = RouterBus::new(socket, ctx, router, tasks);
+        let mut router = Router::<Ctx>::default();
+        router.add::<MyHandler>();
 
-        tokio::runtime::Builder::new_multi_thread()
-            .build()
-            .unwrap()
-            .block_on(async move {
-                let bus_handle = tokio::spawn(async move {
-                    bus.listen_once().await;
-                });
+        let events_ctx = EventsContextBuilder::default().build(&cream_ctx, router, ctx);
+        let tasks: Tasks = cream_ctx.provide();
+        let port: EventBusPort = events_ctx.provide();
 
-                port.publish(MyEvent);
-                let _ = bus_handle.await;
+        port.publish(MyEvent);
+        tasks.close();
+        tasks.wait().await;
 
-                assert!(VAL.load(std::sync::atomic::Ordering::Relaxed));
-            });
+        assert!(VAL.load(std::sync::atomic::Ordering::Relaxed));
     }
 
     #[test]
