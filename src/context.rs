@@ -75,6 +75,7 @@ pub mod events_context {
 
     use super::{Context, ContextProvide, CreamContext};
 
+    #[derive(Clone)]
     pub struct EventsContext {
         port: EventBusPort,
     }
