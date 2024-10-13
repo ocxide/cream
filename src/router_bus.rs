@@ -1,8 +1,4 @@
-use crate::{
-    event_bus::{EventBusPort, EventBusSocket},
-    events::router::Router,
-    tasks::Tasks,
-};
+use crate::{event_bus::EventBusSocket, events::router::Router, tasks::Tasks};
 
 pub struct RouterBus<C: 'static> {
     recv: EventBusSocket,
@@ -40,18 +36,11 @@ impl<C: 'static> RouterBus<C> {
     }
 }
 
-/// Recommended channel config for EventBus
-pub fn create_channel(tasks: Tasks) -> (EventBusPort, EventBusSocket) {
-    crate::event_bus::create(10, tasks)
-}
-
 #[cfg(test)]
 mod tests {
 
     use crate::{
-        context::ContextProvide,
-        events::DomainEvent,
-        events::{Error, Handler},
+        context::ContextProvide, event_bus, events::{DomainEvent, Error, Handler}
     };
 
     use super::*;
@@ -90,7 +79,7 @@ mod tests {
 
         let mut router = Router::default();
         router.add::<MyHandler>();
-        let (port, socket) = create_channel(tasks.clone());
+        let (port, socket) = event_bus::create(10, tasks.clone());
 
         let ctx = Ctx;
 

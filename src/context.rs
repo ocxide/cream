@@ -67,10 +67,7 @@ mod cream_context {
 
 pub mod events_context {
     use crate::{
-        event_bus::EventBusPort,
-        events::router::Router,
-        router_bus::{create_channel, RouterBus},
-        tasks::Tasks,
+        event_bus::EventBusPort, events::router::Router, router_bus::RouterBus, tasks::Tasks,
     };
 
     use super::{Context, ContextProvide, CreamContext};
@@ -81,23 +78,44 @@ pub mod events_context {
 
     impl Context for EventsContext {}
 
-    pub fn create<C: Send + 'static + Sync>(
-        cream_ctx: &CreamContext,
-        router: Router<C>,
-        ctx: C,
-    ) -> EventsContext {
-        let tasks: Tasks = cream_ctx.provide();
-        let (port, socket) = create_channel(cream_ctx.provide());
-
-        let mut bus = RouterBus::new(socket, ctx, router, tasks);
-        tokio::spawn(async move { bus.listen().await });
-
-        EventsContext { port }
-    }
-
     impl ContextProvide<EventBusPort> for EventsContext {
         fn ctx_provide(&self) -> EventBusPort {
             self.port.clone()
+        }
+    }
+
+    pub struct EventsContextBuilder {
+        channel_size: usize,
+    }
+
+    impl Default for EventsContextBuilder {
+        fn default() -> Self {
+            Self { channel_size: 10 }
+        }
+    }
+
+    impl EventsContextBuilder {
+        pub fn with_channel_size(mut self, size: usize) -> Self {
+            self.channel_size = size;
+            self
+        }
+
+        pub fn build<C: Send + 'static + Sync>(
+            self,
+            cream_ctx: &CreamContext,
+            router: Router<C>,
+            ctx: C,
+        ) -> EventsContext {
+            let tasks: Tasks = cream_ctx.provide();
+            let (port, socket) = {
+                let tasks = cream_ctx.provide();
+                crate::event_bus::create(self.channel_size, tasks)
+            };
+
+            let mut bus = RouterBus::new(socket, ctx, router, tasks);
+            tokio::spawn(async move { bus.listen().await });
+
+            EventsContext { port }
         }
     }
 }
