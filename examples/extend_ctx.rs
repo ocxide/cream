@@ -1,32 +1,42 @@
 // Just check all compiles
 #![allow(unused)]
 
-use cream::context::{ContextProvide, CreamContext};
+use cream::{
+    context::{ContextProvide, CreamContext},
+    event_bus::EventBusPort,
+};
 
-
-struct AppCtx {
-    cream: CreamContext,
+struct OtherCtx {
+    port: EventBusPort,
 }
 
-trait CtxConfig {}
+impl ContextProvide<EventBusPort> for OtherCtx {
+    fn ctx_provide(&self) -> EventBusPort {
+        self.port.clone()
+    }
+}
 
-impl<S> ContextProvide<S> for AppCtx
+struct Ctx {
+    cream_ctx: CreamContext,
+    other: OtherCtx,
+    dep: Dep,
+}
+
+impl<S> ContextProvide<S> for Ctx
 where
     CreamContext: ContextProvide<S>,
 {
     fn ctx_provide(&self) -> S {
-        self.cream.ctx_provide()
+        self.cream_ctx.ctx_provide()
     }
 }
 
-mod foo {
-    use super::AppCtx;
-    use cream::{context::ContextProvide, event_bus::EventBusPort};
+#[derive(Clone)]
+struct Dep;
 
-    #[derive(ContextProvide)]
-    #[provider_context(AppCtx)]
-    pub struct MyHandler {
-        bus: EventBusPort,
+impl ContextProvide<Dep> for Ctx {
+    fn ctx_provide(&self) -> Dep {
+        self.dep.clone()
     }
 }
 

@@ -1,6 +1,6 @@
 use crate::event_bus::EventBusPort;
 
-use super::ContextProvide;
+use super::{Context, ContextProvide};
 
 #[derive(Clone)]
 pub struct CreamContext {
@@ -12,6 +12,8 @@ impl CreamContext {
         Self { event_bus_port }
     }
 }
+
+impl Context for CreamContext {}
 
 impl ContextProvide<EventBusPort> for CreamContext {
     fn ctx_provide(&self) -> EventBusPort {
