@@ -22,3 +22,4 @@ mod shutdown {
 }
 
 pub use tracker::*;
+pub use shutdown::*;
