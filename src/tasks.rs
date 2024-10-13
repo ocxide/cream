@@ -126,7 +126,9 @@ mod tests {
         router.add::<MyHandler>();
 
         let cream_ctx = CreamContext::default();
-        let events_ctx = EventsContextBuilder::default().build(&cream_ctx, router, ctx.clone());
+        let (events_ctx, setup) = EventsContextBuilder::default().build(&cream_ctx);
+
+        setup.setup(router, ctx.clone());
 
         let tasks: Tasks = cream_ctx.provide();
         let port: EventBusPort = events_ctx.provide();

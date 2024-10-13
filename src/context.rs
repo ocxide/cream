@@ -67,7 +67,10 @@ mod cream_context {
 
 pub mod events_context {
     use crate::{
-        event_bus::EventBusPort, events::router::Router, router_bus::RouterBus, tasks::Tasks,
+        event_bus::{EventBusPort, EventBusSocket},
+        events::router::Router,
+        router_bus::RouterBus,
+        tasks::Tasks,
     };
 
     use super::{Context, ContextProvide, CreamContext};
@@ -100,22 +103,29 @@ pub mod events_context {
             self
         }
 
-        pub fn build<C: Send + 'static + Sync>(
-            self,
-            cream_ctx: &CreamContext,
-            router: Router<C>,
-            ctx: C,
-        ) -> EventsContext {
+        pub fn build(self, cream_ctx: &CreamContext) -> (EventsContext, EventsContextSetup) {
             let tasks: Tasks = cream_ctx.provide();
             let (port, socket) = {
                 let tasks = cream_ctx.provide();
                 crate::event_bus::create(self.channel_size, tasks)
             };
 
-            let mut bus = RouterBus::new(socket, ctx, router, tasks);
-            tokio::spawn(async move { bus.listen().await });
+            let ctx = EventsContext { port };
+            let setup = EventsContextSetup { socket, tasks };
 
-            EventsContext { port }
+            (ctx, setup)
+        }
+    }
+
+    pub struct EventsContextSetup {
+        socket: EventBusSocket,
+        tasks: Tasks,
+    }
+
+    impl EventsContextSetup {
+        pub fn setup<C: Send + 'static + Sync>(self, router: Router<C>, ctx: C) {
+            let mut bus = RouterBus::new(self.socket, ctx, router, self.tasks);
+            tokio::spawn(async move { bus.listen().await });
         }
     }
 }

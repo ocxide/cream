@@ -83,7 +83,9 @@ mod tests {
         let mut router = Router::<Ctx>::default();
         router.add::<MyHandler>();
 
-        let events_ctx = EventsContextBuilder::default().build(&cream_ctx, router, ctx);
+        let (events_ctx, setup) = EventsContextBuilder::default().build(&cream_ctx);
+        setup.setup(router, ctx);
+
         let tasks: Tasks = cream_ctx.provide();
         let port: EventBusPort = events_ctx.provide();
 
