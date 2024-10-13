@@ -1,26 +1,23 @@
-use crate::events::DomainEvent;
+use crate::{events::DomainEvent, tasks::Tasks};
 
 #[derive(Clone)]
-pub struct EventBusPort(tokio::sync::mpsc::Sender<Box<dyn DomainEvent>>);
+pub struct EventBusPort {
+    tx: tokio::sync::mpsc::Sender<Box<dyn DomainEvent>>,
+    tasks: Tasks,
+}
 
 impl EventBusPort {
-    pub(crate) fn new(tx: tokio::sync::mpsc::Sender<Box<dyn DomainEvent>>) -> Self {
-        Self(tx)
-    }
-
     pub fn publish(&self, event: impl DomainEvent + 'static) {
         let event = Box::new(event);
 
-        let Err(err) = self.0.try_send(event) else {
-            return;
-        };
+        let tx = self.tx.clone();
+        self.tasks.spawn(async move {
+            let Err(e) = tx.send(event).await else {
+                return;
+            };
 
-        match err {
-            tokio::sync::mpsc::error::TrySendError::Full(_) => "Channel is full",
-            tokio::sync::mpsc::error::TrySendError::Closed(_) => "Channel is closed",
-        };
-
-        panic!("Failed to send event: {}", err);
+            eprintln!("Failed to send event: {}", e);
+        });
     }
 }
 
@@ -32,8 +29,7 @@ impl EventBusSocket {
     }
 }
 
-pub(crate) fn create(size: usize) -> (EventBusPort, EventBusSocket) {
+pub(crate) fn create(size: usize, tasks: Tasks) -> (EventBusPort, EventBusSocket) {
     let (tx, rx) = tokio::sync::mpsc::channel(size);
-    (EventBusPort::new(tx), EventBusSocket(rx))
+    (EventBusPort { tasks, tx }, EventBusSocket(rx))
 }
-

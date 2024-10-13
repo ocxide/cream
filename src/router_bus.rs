@@ -8,20 +8,22 @@ pub struct RouterBus<C: 'static> {
     recv: EventBusSocket,
     ctx: C,
     router: Router<C>,
+    tasks: Tasks,
 }
 
 impl<C: 'static> RouterBus<C> {
-    pub fn new(socket: EventBusSocket, ctx: C, router: Router<C>) -> Self {
+    pub fn new(socket: EventBusSocket, ctx: C, router: Router<C>, tasks: Tasks) -> Self {
         RouterBus {
             recv: socket,
             ctx,
             router,
+            tasks,
         }
     }
 }
 
 impl<C: 'static> RouterBus<C> {
-    pub async fn listen_once(&mut self, tasks: &Tasks) -> Option<()> {
+    pub async fn listen_once(&mut self) -> Option<()> {
         let event = self.recv.recv().await?;
         let (name, version) = (event.name(), event.version());
         let Some(fut) = self.router.call(&self.ctx, event) else {
@@ -29,18 +31,18 @@ impl<C: 'static> RouterBus<C> {
             return Some(());
         };
 
-        tasks.spawn(fut);
+        self.tasks.spawn(fut);
         Some(())
     }
 
-    pub async fn listen(&mut self, tasks: Tasks) {
-        while self.listen_once(&tasks).await.is_some() {}
+    pub async fn listen(&mut self) {
+        while self.listen_once().await.is_some() {}
     }
 }
 
 /// Recommended channel config for EventBus
-pub fn create_channel() -> (EventBusPort, EventBusSocket) {
-    crate::event_bus::create(10)
+pub fn create_channel(tasks: Tasks) -> (EventBusPort, EventBusSocket) {
+    crate::event_bus::create(10, tasks)
 }
 
 #[cfg(test)]
@@ -84,21 +86,22 @@ mod tests {
             }
         }
 
+        let tasks = Tasks::new();
+
         let mut router = Router::default();
         router.add::<MyHandler>();
-        let (port, socket) = create_channel();
+        let (port, socket) = create_channel(tasks.clone());
 
         let ctx = Ctx;
 
-        let mut bus = RouterBus::new(socket, ctx, router);
+        let mut bus = RouterBus::new(socket, ctx, router, tasks);
 
         tokio::runtime::Builder::new_multi_thread()
             .build()
             .unwrap()
             .block_on(async move {
-                let tasks = Tasks::new();
                 let bus_handle = tokio::spawn(async move {
-                    bus.listen_once(&tasks).await;
+                    bus.listen_once().await;
                 });
 
                 port.publish(MyEvent);
@@ -113,10 +116,6 @@ mod tests {
         #[allow(dead_code)]
         struct Ctx(crate::context::CreamContext);
 
-        let router = Router::default();
-        let (port, socket) = create_channel();
-        let ctx = Ctx(crate::context::CreamContext::new(port));
-
-        let _ = RouterBus::new(socket, ctx, router);
+        let _ctx = Ctx(crate::context::CreamContext::default());
     }
 }
