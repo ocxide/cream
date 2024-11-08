@@ -1,6 +1,6 @@
 use crate::tasks::Tasks;
 
-use super::{Context, ContextProvide};
+use super::{Context, FromContext};
 
 #[derive(Clone)]
 pub struct CreamContext {
@@ -17,9 +17,8 @@ impl Default for CreamContext {
 
 impl Context for CreamContext {}
 
-impl ContextProvide<Tasks> for CreamContext {
-    fn ctx_provide(&self) -> Tasks {
-        self.tasks.clone()
+impl FromContext<CreamContext> for Tasks {
+    fn from_context(ctx: &CreamContext) -> Self {
+        ctx.tasks.clone()
     }
 }
-

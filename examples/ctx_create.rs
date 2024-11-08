@@ -1,21 +1,21 @@
 // Just check all compiles
 #[allow(unused, dead_code)]
-use cream::context::{Context, ContextCreate, ContextProvide};
+use cream::context::{Context, ContextCreate, FromContext};
 
 struct Ctx;
 
 impl Context for Ctx {}
 
-impl ContextProvide<Dep> for Ctx {
-    fn ctx_provide(&self) -> Dep {
+impl FromContext<Ctx> for Dep {
+    fn from_context(_: &Ctx) -> Self {
         Dep
     }
 }
 
 struct Dep;
 
-#[derive(ContextProvide)]
-#[provider_context(Ctx)]
+#[derive(FromContext)]
+#[context(Ctx)]
 struct Deps {
     dep: Dep,
 }

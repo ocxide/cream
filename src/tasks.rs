@@ -1,10 +1,10 @@
 mod tracker;
 mod shutdown {
     use super::Tasks;
-    use crate::context::{ContextProvide, CreamContext};
+    use crate::context::{FromContext, CreamContext};
 
-    #[derive(ContextProvide)]
-    #[provider_context(CreamContext)]
+    #[derive(FromContext)]
+    #[context(CreamContext)]
     pub struct Shutdown {
         tasks: Tasks,
     }

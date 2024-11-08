@@ -18,11 +18,24 @@ mod helpers {
 }
 
 pub use cream_context::CreamContext;
-pub use cream_derive::ContextProvide;
+pub use cream_derive::*;
 pub use helpers::*;
+
+pub trait FromContext<C> {
+    fn from_context(ctx: &C) -> Self;
+}
 
 pub trait ContextProvide<S> {
     fn ctx_provide(&self) -> S;
+}
+
+impl<C, S> ContextProvide<S> for C
+where
+    S: FromContext<C>,
+{
+    fn ctx_provide(&self) -> S {
+        S::from_context(self)
+    }
 }
 
 pub trait ContextCreate<S> {
@@ -51,11 +64,8 @@ pub trait Context {
     }
 }
 
-impl<C> ContextProvide<()> for C
-where
-    C: Context,
-{
-    fn ctx_provide(&self) {}
+impl<C> FromContext<C> for () {
+    fn from_context(_ctx: &C) {}
 }
 
 pub trait ContextExtend<C: Context> {

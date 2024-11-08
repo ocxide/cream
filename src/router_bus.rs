@@ -40,7 +40,7 @@ impl<C: 'static> RouterBus<C> {
 mod tests {
 
     use crate::{
-        context::{events_context::EventsContextBuilder, Context, ContextProvide, CreamContext},
+        context::{events_context::EventsContextBuilder, Context, FromContext, CreamContext},
         event_bus::{self, EventBusPort},
         events::{DomainEvent, Error, Handler},
     };
@@ -65,8 +65,8 @@ mod tests {
             }
         }
 
-        #[derive(ContextProvide)]
-        #[provider_context(Ctx)]
+        #[derive(FromContext)]
+        #[context(Ctx)]
         struct MyHandler;
 
         impl Handler for MyHandler {

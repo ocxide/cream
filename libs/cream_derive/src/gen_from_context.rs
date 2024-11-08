@@ -25,30 +25,6 @@ pub fn gen_from_context(input: syn::DeriveInput) -> TokenStream {
 
     let struct_name = &input.ident;
 
-    let build_tokens = match ast.fields {
-        syn::Fields::Named(fields) => {
-            let mappings = fields.named.iter().map(|field| {
-                let mapping = quote! { ctx.ctx_provide() };
-                let name = field.ident.as_ref().expect("expected named field");
-
-                quote! { #name: #mapping }
-            });
-
-            quote! { Self { #(#mappings),* } }
-        }
-        syn::Fields::Unnamed(fields) => {
-            let mappings = fields.unnamed.iter().map(|_| {
-                let mapping = quote! { ctx.ctx_provide() };
-                quote! { #mapping }
-            });
-
-            quote! { Self ( #(#mappings),* ) }
-        }
-        syn::Fields::Unit => {
-            quote! { Self }
-        }
-    };
-
     let (ctx_name, header) = match context {
         ContextImpl::Static(context_name) => {
             let tokens = quote! { impl FromContext<#context_name> for #struct_name };
@@ -58,6 +34,32 @@ pub fn gen_from_context(input: syn::DeriveInput) -> TokenStream {
         ContextImpl::Generic { ident, bounds } => {
             let tokens = quote! { impl <#ident: #bounds> FromContext<#ident> for #struct_name };
             (ident, tokens)
+        }
+    };
+
+    let build_tokens = match ast.fields {
+        syn::Fields::Named(fields) => {
+            let mappings = fields.named.iter().map(|field| {
+                let ty = &field.ty;
+                let mapping = quote! { <#ty as FromContext<#ctx_name>>::from_context(ctx) };
+                let name = field.ident.as_ref().expect("expected named field");
+
+                quote! { #name: #mapping }
+            });
+
+            quote! { Self { #(#mappings),* } }
+        }
+        syn::Fields::Unnamed(fields) => {
+            let mappings = fields.unnamed.iter().map(|field| {
+                let ty = &field.ty;
+                let mapping = quote! { <#ty as FromContext<#ctx_name>>::from_context(ctx) };
+                quote! { #mapping }
+            });
+
+            quote! { Self ( #(#mappings),* ) }
+        }
+        syn::Fields::Unit => {
+            quote! { Self }
         }
     };
 
