@@ -1,5 +1,6 @@
 mod error;
 mod gen_context_provide;
+mod gen_from_context;
 mod common {
     use proc_macro2::TokenStream;
 
@@ -15,4 +16,10 @@ use proc_macro::TokenStream;
 pub fn context_provide_derive(input: TokenStream) -> TokenStream {
     let ast = syn::parse_macro_input!(input as syn::DeriveInput);
     gen_context_provide::gen_context_provide(ast).into()
+}
+
+#[proc_macro_derive(FromContext, attributes(context))]
+pub fn from_context_derive(input: TokenStream) -> TokenStream {
+    let ast = syn::parse_macro_input!(input as syn::DeriveInput);
+    gen_from_context::gen_from_context(ast).into()
 }
