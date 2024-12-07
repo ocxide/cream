@@ -25,11 +25,11 @@ pub trait FromContext<C> {
     fn from_context(ctx: &C) -> Self;
 }
 
-pub trait ContextProvide<S> {
+pub trait ContextProvide<S> : Context {
     fn ctx_provide(&self) -> S;
 }
 
-impl<C, S> ContextProvide<S> for C
+impl<C: Context, S> ContextProvide<S> for C
 where
     S: FromContext<C>,
 {

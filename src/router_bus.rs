@@ -40,8 +40,8 @@ impl<C: 'static> RouterBus<C> {
 mod tests {
 
     use crate::{
-        context::{events_context::EventsContextBuilder, Context, FromContext, CreamContext},
-        event_bus::{self, EventBusPort},
+        context::{events_context::EventsContextBuilder, Context, CreamContext, FromContext},
+        event_bus::EventBusPort,
         events::{DomainEvent, Error, Handler},
     };
 
@@ -52,6 +52,7 @@ mod tests {
         static VAL: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
         struct Ctx;
+        impl Context for Ctx {}
 
         #[derive(Clone)]
         struct MyEvent;

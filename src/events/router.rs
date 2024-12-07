@@ -48,7 +48,7 @@ impl<C, E: DomainEvent> EventHandlers<C, E> {
         C: ContextProvide<H>,
     {
         let caller: Caller<C, H::Event> = |ctx, event| {
-            let handler = ctx.ctx_provide();
+            let handler: H = ctx.provide();
             Box::pin(async move {
                 let _ = handler.handle(event).await;
             })
@@ -110,7 +110,7 @@ pub mod tests {
     use std::sync::Mutex;
 
     use crate::{
-        context::FromContext,
+        context::{Context, FromContext},
         events::{DomainEvent, Error, Handler},
     };
 
@@ -125,6 +125,8 @@ pub mod tests {
                 *self.val.lock().unwrap() = true;
             }
         }
+
+        impl Context for MockContext {}
 
         #[derive(Clone)]
         struct TestEvent;
