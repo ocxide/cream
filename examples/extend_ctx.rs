@@ -24,9 +24,15 @@ impl ContextExtend<EventsContext> for MyCtx {
     }
 }
 
-pub_provide!(MyCtx : EventsContext {
-    EventBusPort
-});
+mod providings {
+    use cream::{context::events_context::EventsContext, event_bus::EventBusPort, pub_provide};
+
+    use crate::MyCtx;
+
+    pub_provide!(MyCtx : EventsContext {
+        EventBusPort
+    });
+}
 
 #[derive(FromContext)]
 #[context(MyCtx)]
@@ -35,5 +41,4 @@ struct Service1 {
     bus: EventBusPort,
 }
 
-fn main() {
-}
+fn main() {}

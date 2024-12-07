@@ -7,7 +7,7 @@ mod helpers {
         $(
         impl $crate::context::FromContext<$ctx> for $service {
             fn from_context(_ctx: &$ctx) -> Self {
-                let ctx: &$provider = _ctx.provide_ctx();
+                let ctx: &$provider = <$ctx as $crate::context::ContextExtend<$provider>>::provide_ctx(_ctx);
                 <Self as $crate::context::FromContext<$provider>>::from_context(&ctx)
             }    
         }
