@@ -5,11 +5,11 @@ mod helpers {
     #[macro_export]
     macro_rules! pub_provide (($ctx: path : $provider: path { $($service: path),* $(,)? }) => {
         $(
-        impl $crate::context::ContextProvide<$service> for $ctx {
-            fn ctx_provide(&self) -> $service {
-                let ctx = <Self as $crate::context::ContextExtend<$provider>>::provide_ctx(self);
-                ctx.ctx_provide()
-            }
+        impl $crate::context::FromContext<$ctx> for $service {
+            fn from_context(_ctx: &$ctx) -> Self {
+                let ctx: &$provider = _ctx.provide_ctx();
+                <Self as $crate::context::FromContext<$provider>>::from_context(&ctx)
+            }    
         }
         )*
     });
