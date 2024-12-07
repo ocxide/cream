@@ -5,7 +5,7 @@ use crate::{
     tasks::Tasks,
 };
 
-use super::{Context, ContextProvide, CreamContext};
+use super::{Context, CreamContext, FromContext};
 
 #[derive(Clone)]
 pub struct EventsContext {
@@ -14,9 +14,9 @@ pub struct EventsContext {
 
 impl Context for EventsContext {}
 
-impl ContextProvide<EventBusPort> for EventsContext {
-    fn ctx_provide(&self) -> EventBusPort {
-        self.port.clone()
+impl FromContext<EventsContext> for EventBusPort {
+    fn from_context(ctx: &EventsContext) -> Self {
+        ctx.port.clone()
     }
 }
 
@@ -61,4 +61,3 @@ impl EventsContextSetup {
         tokio::spawn(async move { bus.listen().await });
     }
 }
-

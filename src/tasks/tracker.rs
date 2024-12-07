@@ -38,9 +38,10 @@ mod tests {
     };
 
     use crate::{
-        context::{events_context::EventsContextBuilder, Context, ContextProvide},
+        context::{events_context::EventsContextBuilder, Context, FromContext},
         event_bus::EventBusPort,
-        events::{router, DomainEvent, Error, Handler}, tasks::shutdown::Shutdown,
+        events::{router, DomainEvent, Error, Handler},
+        tasks::shutdown::Shutdown,
     };
 
     use super::*;
@@ -76,9 +77,11 @@ mod tests {
             created: Arc<AtomicBool>,
         }
 
-        impl ContextProvide<Arc<AtomicBool>> for MyCtx {
-            fn ctx_provide(&self) -> Arc<AtomicBool> {
-                self.ran.clone()
+        impl Context for MyCtx {}
+
+        impl FromContext<MyCtx> for Arc<AtomicBool> {
+            fn from_context(ctx: &MyCtx) -> Arc<AtomicBool> {
+                ctx.ran.clone()
             }
         }
 
@@ -98,13 +101,11 @@ mod tests {
             ran: Arc<AtomicBool>,
         }
 
-        impl ContextProvide<MyHandler> for MyCtx {
-            fn ctx_provide(&self) -> MyHandler {
-                self.created
+        impl FromContext<MyCtx> for MyHandler {
+            fn from_context(ctx: &MyCtx) -> Self {
+                ctx.created
                     .store(true, std::sync::atomic::Ordering::Relaxed);
-                MyHandler {
-                    ran: self.ran.clone(),
-                }
+                Self { ran: ctx.provide() }
             }
         }
 
@@ -150,4 +151,3 @@ mod tests {
         );
     }
 }
-

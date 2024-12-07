@@ -2,49 +2,38 @@
 #![allow(unused)]
 
 use cream::{
-    context::{ContextProvide, CreamContext, FromContext},
+    context::{
+        events_context::EventsContext, ContextExtend, ContextProvide, CreamContext, FromContext,
+    },
     event_bus::EventBusPort,
+    pub_provide,
 };
 
-trait Ctx: ContextProvide<Dep> + ContextProvide<Dep2> {}
+#[derive(FromContext)]
+#[context(MyCtx)]
+struct Dep1;
 
 struct MyCtx {
-    dep: Dep,
+    events: EventsContext,
+    dep1: Dep1,
 }
 
-impl Ctx for MyCtx {}
-impl FromContext<MyCtx> for Dep {
-    fn from_context(ctx: &MyCtx) -> Self {
-        ctx.dep.clone()
+impl ContextExtend<EventsContext> for MyCtx {
+    fn provide_ctx(&self) -> &EventsContext {
+        &self.events
     }
 }
 
-impl FromContext<MyCtx> for Dep2 {
-    fn from_context(ctx: &MyCtx) -> Self {
-        Dep2
-    }
-}
+pub_provide!(MyCtx : EventsContext {
+    EventBusPort
+});
 
-#[derive(Clone)]
-struct Dep;
-
-#[derive(Clone)]
-struct Dep2;
-
-#[derive(Clone, FromContext)]
+#[derive(FromContext)]
 #[context(MyCtx)]
 struct Service1 {
-    dep: Dep,
-    dep2: Dep2,
-}
-
-#[derive(Clone, FromContext)]
-#[context(MyCtx)]
-struct Service2 {
-    dep: Dep,
-    service1: Service1,
+    dep1: Dep1,
+    bus: EventBusPort,
 }
 
 fn main() {
-    let a = Service2::from_context(&MyCtx { dep: Dep });
 }

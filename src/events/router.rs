@@ -110,7 +110,7 @@ pub mod tests {
     use std::sync::Mutex;
 
     use crate::{
-        context::ContextProvide,
+        context::FromContext,
         events::{DomainEvent, Error, Handler},
     };
 
@@ -140,10 +140,10 @@ pub mod tests {
         }
 
         struct TestHandler;
-        impl ContextProvide<TestHandler> for MockContext {
-            fn ctx_provide(&self) -> TestHandler {
-                self.my_service();
-                TestHandler {}
+        impl FromContext<MockContext> for TestHandler {
+            fn from_context(ctx: &MockContext) -> Self {
+                ctx.my_service();
+                TestHandler
             }
         }
 
