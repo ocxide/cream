@@ -4,11 +4,11 @@ version = "0.2.0"
 edition = "2021"
 
 [workspace]
-members = ["libs/cream_derive"]
+members = ["libs/cream_derive", "libs/cream_events_core"]
 
 [dependencies]
 async-trait = "0.1.81"
-# thiserror = "1.0.63"
 tokio = { version = "1.39.1", features = ["full"] }
 cream_derive = { path = "./libs/cream_derive" }
 tokio-util = { version = "^0.7.0", features = ["full"] }
+cream_events_core = { path = "./libs/cream_events_core" }

@@ -79,6 +79,7 @@ version = "0.2.0"
 dependencies = [
  "async-trait",
  "cream_derive",
+ "cream_events_core",
  "tokio",
  "tokio-util",
 ]
@@ -91,6 +92,10 @@ dependencies = [
  "quote",
  "syn",
 ]
+
+[[package]]
+name = "cream_events_core"
+version = "0.1.0"
 
 [[package]]
 name = "futures-core"
