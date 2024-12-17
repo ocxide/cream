@@ -9,7 +9,7 @@ mod helpers {
             fn from_context(_ctx: &$ctx) -> Self {
                 let ctx: &$provider = <$ctx as $crate::context::ContextExtend<$provider>>::provide_ctx(_ctx);
                 <Self as $crate::context::FromContext<$provider>>::from_context(&ctx)
-            }    
+            }
         }
         )*
     });
@@ -25,7 +25,12 @@ pub trait FromContext<C> {
     fn from_context(ctx: &C) -> Self;
 }
 
-pub trait ContextProvide<S> : Context {
+pub trait CreateFromContext<C> {
+    type Args;
+    fn create_from_context(ctx: &C, args: Self::Args) -> Self;
+}
+
+pub trait ContextProvide<S>: Context {
     fn ctx_provide(&self) -> S;
 }
 
@@ -38,12 +43,6 @@ where
     }
 }
 
-pub trait ContextCreate<S> {
-    type Args;
-    type Deps;
-    fn ctx_create(&self, args: Self::Args, deps: Self::Deps) -> S;
-}
-
 pub trait Context {
     #[inline]
     fn provide<S>(&self) -> S
@@ -54,13 +53,12 @@ pub trait Context {
     }
 
     #[inline]
-    fn create<S>(&self, args: Self::Args) -> S
+    fn create<S>(&self, args: S::Args) -> S
     where
-        Self: ContextCreate<S>,
-        Self: ContextProvide<Self::Deps>,
+        Self: Sized,
+        S: CreateFromContext<Self>,
     {
-        let deps = self.provide();
-        self.ctx_create(args, deps)
+        S::create_from_context(self, args)
     }
 }
 

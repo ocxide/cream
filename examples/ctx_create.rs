@@ -1,6 +1,7 @@
+use cream::context::CreateFromContext;
 // Just check all compiles
 #[allow(unused, dead_code)]
-use cream::context::{Context, ContextCreate, FromContext};
+use cream::context::{Context, FromContext};
 
 struct Ctx;
 
@@ -25,11 +26,13 @@ struct ArgdService1 {
     deps: Deps,
 }
 
-impl ContextCreate<ArgdService1> for Ctx {
+impl CreateFromContext<Ctx> for ArgdService1 {
     type Args = String;
-    type Deps = Deps;
-    fn ctx_create(&self, name: Self::Args, deps: Self::Deps) -> ArgdService1 {
-        ArgdService1 { name, deps }
+    fn create_from_context(ctx: &Ctx, name: Self::Args) -> Self {
+        ArgdService1 {
+            name,
+            deps: ctx.provide(),
+        }
     }
 }
 
@@ -38,11 +41,13 @@ struct ArgdService2 {
     deps: Deps,
 }
 
-impl ContextCreate<ArgdService2> for Ctx {
+impl CreateFromContext<Ctx> for ArgdService2 {
     type Args = u32;
-    type Deps = Deps;
-    fn ctx_create(&self, nval: Self::Args, deps: Self::Deps) -> ArgdService2 {
-        ArgdService2 { nval, deps }
+    fn create_from_context(ctx: &Ctx, nval: Self::Args) -> Self {
+        ArgdService2 {
+            nval,
+            deps: ctx.provide(),
+        }
     }
 }
 
@@ -50,11 +55,12 @@ struct ArgdService3 {
     deps: Deps,
 }
 
-impl ContextCreate<ArgdService3> for Ctx {
+impl CreateFromContext<Ctx> for ArgdService3 {
     type Args = ();
-    type Deps = Deps;
-    fn ctx_create(&self, _: Self::Args, deps: Self::Deps) -> ArgdService3 {
-        ArgdService3 { deps }
+    fn create_from_context(ctx: &Ctx, _: Self::Args) -> Self {
+        ArgdService3 {
+            deps: ctx.provide(),
+        }
     }
 }
 
